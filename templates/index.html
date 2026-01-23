@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Transcriber</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        input[type="text"], input[type="url"] { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .video-list { margin-top: 2rem; }
+        .video-item { border-bottom: 1px solid #eee; padding: 1rem 0; }
+        .video-item:last-child { border-bottom: none; }
+        .status { font-weight: bold; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        .status-Pending { background-color: #fff3cd; color: #856404; }
+        .status-Transcribed { background-color: #d4edda; color: #155724; }
+        .status-Error { background-color: #f8d7da; color: #721c24; }
+        .transcription-box { background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.9em; }
+        .config-section { background: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TikTok to Tweets Automation</h1>
+
+        <div class="config-section">
+            <form action="/set-colab-url" method="post">
+                <div class="form-group">
+                    <label for="colab_url">Colab API URL (Ngrok)</label>
+                    <input type="url" id="colab_url" name="colab_url" value="{{ colab_url }}" placeholder="https://xxxx-xx-xx-xx-xx.ngrok.io">
+                </div>
+                <button type="submit">Update URL</button>
+            </form>
+        </div>
+
+        <form action="/add" method="post">
+            <div class="form-group">
+                <label for="tiktok_url">New TikTok URL</label>
+                <input type="url" id="tiktok_url" name="tiktok_url" placeholder="https://www.tiktok.com/@user/video/..." required>
+            </div>
+            <button type="submit">Add & Transcribe</button>
+        </form>
+
+        <div class="video-list">
+            <h2>History</h2>
+            {% for video in videos %}
+            <div class="video-item">
+                <div><strong>ID:</strong> {{ video.id }}</div>
+                <div><strong>Date:</strong> {{ video.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                <div><a href="{{ video.url }}" target="_blank">{{ video.url }}</a></div>
+                <div style="margin-top: 5px;">
+                    <span class="status status-{{ video.status }}">{{ video.status }}</span>
+                    {% if video.status == 'Error' or video.status == 'Pending' %}
+                    <form action="/retry/{{ video.id }}" method="post" style="display:inline;">
+                        <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #6c757d;">Retry</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% if video.transcription %}
+                <div class="transcription-box">{{ video.transcription }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>
