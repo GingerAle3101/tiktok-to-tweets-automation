@@ -126,3 +126,7 @@ async def delete_video(
         db.commit()
     
     return RedirectResponse(url="/", status_code=303)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8001)

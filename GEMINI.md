@@ -48,9 +48,9 @@ uv sync
 
 **Running the Server:**
 ```bash
-uv run uvicorn receiver:app --reload
+uv run uvicorn receiver:app --reload --port 8001
 ```
-*   Access the dashboard at: `http://127.0.0.1:8000`
+*   Access the dashboard at: `http://127.0.0.1:8001`
 
 ## 2. Remote Transcriber Setup
 
@@ -65,7 +65,7 @@ This component runs on Google Colab to utilize free GPU resources.
 ## 3. Connecting the Two
 
 1.  Copy the **Ngrok URL** from the Colab notebook output.
-2.  Go to your Local Receiver Dashboard (`http://127.0.0.1:8000`).
+2.  Go to your Local Receiver Dashboard (`http://127.0.0.1:8001`).
 3.  Paste the URL into the **"Colab API URL"** field and click **"Update URL"**.
 4.  You are now ready to transcribe videos.
 
