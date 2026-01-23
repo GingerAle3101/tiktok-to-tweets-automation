@@ -114,3 +114,15 @@ async def retry_video(
         background_tasks.add_task(send_to_colab, video.id, video.url, db)
     
     return RedirectResponse(url="/", status_code=303)
+
+@app.post("/delete/{video_id}")
+async def delete_video(
+    video_id: int,
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if video:
+        db.delete(video)
+        db.commit()
+    
+    return RedirectResponse(url="/", status_code=303)
