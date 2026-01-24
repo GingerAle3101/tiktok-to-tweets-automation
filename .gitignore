@@ -54,3 +54,6 @@ temp_*
 
 # Project specific
 source_links.txt
+
+.gemini/
+gha-creds-*.json
