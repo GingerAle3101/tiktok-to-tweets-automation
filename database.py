@@ -1,6 +1,12 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime, timezone
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+from datetime import datetime, timezone
 
 DATABASE_URL = "sqlite:///./database.db"
 
