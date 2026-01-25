@@ -25,6 +25,7 @@
         .status-Completed { background-color: #d1e7dd; color: #0f5132; }
         .status-Error { background-color: #f8d7da; color: #721c24; }
         .status-Research_Failed { background-color: #f8d7da; color: #721c24; }
+        .status-Quota_Exceeded { background-color: #f5c6cb; color: #721c24; border: 1px solid #721c24; }
 
         .transcription-box { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; font-size: 0.9em; position: relative; border-left: 4px solid #007bff; }
         .research-box { background: #fff3cd; border-left-color: #ffc107; }
@@ -72,7 +73,7 @@
                 <div><a href="{{ video.url }}" target="_blank">{{ video.url }}</a></div>
                 <div style="margin-top: 5px; margin-bottom: 10px;">
                     <span class="status status-{{ video.status }}">{{ video.status }}</span>
-                    {% if video.status == 'Error' or video.status == 'Pending' or video.status == 'Research_Failed' %}
+                    {% if video.status == 'Error' or video.status == 'Pending' or video.status == 'Research_Failed' or video.status == 'Quota_Exceeded' %}
                     <form action="/retry/{{ video.id }}" method="post" class="retry-form" style="display:inline;">
                         <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #6c757d;">Retry</button>
                     </form>
@@ -109,6 +110,7 @@
                     <ul style="font-size: 0.9em; margin-top: 5px; padding-left: 20px;">
                     {% for source in sources %}
                         <li style="margin-bottom: 4px;">
+                            <span style="color: #666; font-weight: bold; margin-right: 5px;">[{{ loop.index }}]</span>
                             <a href="{{ source }}" target="_blank" style="color: #007bff; text-decoration: none;">{{ source }}</a>
                         </li>
                     {% endfor %}

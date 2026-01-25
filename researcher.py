@@ -1,8 +1,10 @@
 import os
 import json
 import logging
+import httpx
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
+from prompts import RESEARCH_SYSTEM_PROMPT, DRAFTING_SYSTEM_PROMPT
 
 load_dotenv()
 
@@ -15,81 +17,107 @@ PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 if not PERPLEXITY_API_KEY:
     logger.warning("PERPLEXITY_API_KEY is not set. Research features will fail.")
 
+# Custom HTTP client to pass WAF/Cloudflare checks
+# Some APIs block default python-httpx User-Agents
+custom_http_client = httpx.AsyncClient(
+    headers={"User-Agent": "TikTok-Automation/1.0"},
+    timeout=60.0
+)
+
 client = AsyncOpenAI(
     api_key=PERPLEXITY_API_KEY,
-    base_url="https://api.perplexity.ai"
+    base_url="https://api.perplexity.ai",
+    http_client=custom_http_client
 )
+
+# -------------------------------------------------------------------------
 
 async def perform_research(transcription: str) -> dict:
     """
-    Analyzes the transcription using Perplexity Sonar API.
-    Returns a dict with 'research_notes', 'tweet_drafts', and 'sources'.
+    Orchestrates the two-step pipeline:
+    1. Deep Research (Source gathering & Analysis)
+    2. Content Drafting (Tweet generation based on step 1)
     """
     if not PERPLEXITY_API_KEY:
         raise ValueError("Perplexity API Key is missing.")
 
-    logger.info("Starting Perplexity research...")
-    logger.info(f"Input transcription length: {len(transcription)} characters")
+    logger.info("Starting Pipeline: Step 1 - Deep Research...")
+    
+    # --- STEP 1: RESEARCH ---
+    research_data = await _run_research_step(transcription)
+    research_notes = research_data.get("research_notes", "")
+    citations = research_data.get("sources", [])
+    
+    logger.info(f"Step 1 Complete. Found {len(citations)} sources.")
+    logger.info("Starting Pipeline: Step 2 - Drafting Tweets...")
 
-    system_prompt = (
-        "You are an expert researcher and social media strategist. "
-        "Your task is to analyze the provided video transcription, verify any claims, "
-        "provide additional context/background (Deep Research), and generate 3 viral tweet variations. "
-        "\n\n"
-        "You MUST return the response in strict JSON format with the following schema:\n"
-        "{\n"
-        '  "research_notes": "A detailed summary of fact-checks, context, and background info. Markdown is supported.",\n'
-        '  "tweet_drafts": ["Tweet 1...", "Tweet 2...", "Tweet 3..."]\n'
-        "}\n"
-        "Do not include any text outside the JSON object."
-    )
+    # --- STEP 2: DRAFTING ---
+    draft_data = await _run_drafting_step(transcription, research_notes)
+    
+    # Combine results
+    return {
+        "research_notes": research_notes,
+        "sources": citations,
+        "tweet_drafts": draft_data.get("tweet_drafts", [])
+    }
 
+async def _run_research_step(transcription: str) -> dict:
     try:
-        logger.info(f"Sending request to Perplexity API (model='sonar-deep-research')...")
-        
-        # Use with_raw_response to access custom fields like 'citations'
         response_raw = await client.chat.completions.with_raw_response.create(
-            model="sonar-deep-research", # Optimized for deep research
+            model="sonar-deep-research",
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Analyze this transcription:\n\n{transcription}"}
             ],
         )
         
-        # Parse the raw JSON body
         response_data = json.loads(response_raw.content)
-        
-        # Extract content
         content = response_data['choices'][0]['message']['content']
-        
-        # Extract citations
         citations = response_data.get('citations', [])
-        logger.info(f"Found {len(citations)} citations.")
         
-        logger.info(f"Received response from Perplexity. Raw content preview: {content[:500]}...")
-        
-        # Clean up potential markdown code blocks if the model adds them
-        if content.startswith("```json"):
-            content = content.replace("```json", "").replace("```", "")
-        elif content.startswith("```"):
-            content = content.replace("```", "")
-            
+        # Clean markdown
+        content = _clean_json_markdown(content)
         data = json.loads(content)
-        logger.info("Successfully parsed JSON response.")
         
-        # Validate keys
-        if "research_notes" not in data or "tweet_drafts" not in data:
-            raise ValueError("Missing keys in API response.")
-            
-        # Add citations to the result
+        # Add citations to result for internal passing
         data["sources"] = citations
-        
         return data
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON from Perplexity: {e}")
-        # logger.error(f"Raw content: {content}") # content might not be defined if raw parse fails
-        raise
     except Exception as e:
-        logger.error(f"Perplexity API error: {e}")
-        raise
+        logger.error(f"Research Step Failed: {e}")
+        # Return empty safe defaults if research fails, so we can maybe still try to draft?
+        # Or re-raise to fail the whole task. Let's re-raise to be safe.
+        raise e
+
+async def _run_drafting_step(transcription: str, research_notes: str) -> dict:
+    try:
+        user_content = (
+            f"--- TRANSCRIPTION ---\n{transcription}\n\n"
+            f"--- RESEARCH NOTES ---\n{research_notes}\n\n"
+            "Generate the tweets now."
+        )
+
+        response = await client.chat.completions.create(
+            model="sonar-pro", # Faster, good for creative writing
+            messages=[
+                {"role": "system", "content": DRAFTING_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content}
+            ],
+        )
+        
+        content = response.choices[0].message.content
+        content = _clean_json_markdown(content)
+        
+        return json.loads(content)
+
+    except Exception as e:
+        logger.error(f"Drafting Step Failed: {e}")
+        return {"tweet_drafts": ["Error generating drafts."]}
+
+def _clean_json_markdown(text: str) -> str:
+    """Helper to strip ```json and ``` code blocks."""
+    if text.startswith("```json"):
+        return text.replace("```json", "").replace("```", "")
+    elif text.startswith("```"):
+        return text.replace("```", "")
+    return text.strip()

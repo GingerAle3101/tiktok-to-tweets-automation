@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, Form, Depends, BackgroundTasks, HTTPExcept
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine, Base, Video, init_db
+from database import SessionLocal, engine, Base, Video, SystemConfig, init_db
 import httpx
 import logging
 import json
@@ -39,6 +39,20 @@ def get_db():
     finally:
         db.close()
 
+@app.on_event("startup")
+def load_config():
+    global COLAB_API_URL
+    db = SessionLocal()
+    try:
+        config = db.query(SystemConfig).filter(SystemConfig.key == "colab_url").first()
+        if config:
+            COLAB_API_URL = config.value
+            logger.info(f"Loaded Colab URL from DB: {COLAB_API_URL}")
+    except Exception as e:
+        logger.error(f"Failed to load config: {e}")
+    finally:
+        db.close()
+
 async def run_research_task(video_id: int):
     """
     Background task to perform Deep Research and generate tweets.
@@ -68,8 +82,17 @@ async def run_research_task(video_id: int):
         logger.info(f"Research completed for video {video_id}")
         
     except Exception as e:
-        logger.error(f"Research failed for video {video_id}: {e}")
-        video.status = "Research_Failed"
+        error_msg = str(e)
+        logger.error(f"Research failed for video {video_id}: {error_msg}")
+        
+        # Handle specific Quota/Auth errors (Cloudflare 401)
+        if "401" in error_msg or "Authorization" in error_msg:
+             video.status = "Quota_Exceeded"
+             video.research_notes = f"Research Failed: Insufficient Perplexity API Quota or Auth Error (401).\n\nDetails: {error_msg[:200]}..."
+        else:
+             video.status = "Research_Failed"
+             video.research_notes = f"Research Failed: {error_msg}"
+             
         db.commit()
     finally:
         db.close()
@@ -83,15 +106,20 @@ async def send_to_colab(video_id: int, tiktok_url: str):
         logger.warning(f"No Colab URL set. Skipping transcription for video {video_id}")
         return
 
-    logger.info(f"Sending video {video_id} to Colab: {COLAB_API_URL}")
+    # Clean the URL
+    clean_url = COLAB_API_URL.strip().rstrip('/')
+    logger.info(f"Sending video {video_id} to Colab: {clean_url}")
     
     db = SessionLocal()
     video = db.query(Video).filter(Video.id == video_id).first()
     
     try:
-        endpoint = f"{COLAB_API_URL.rstrip('/')}/transcribe"
+        endpoint = f"{clean_url}/transcribe"
+        logger.info(f"Requesting Endpoint: {endpoint}")
         
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        # Increased timeout to 20 minutes for long videos
+        # SSL verification disabled to handle Ngrok certificate quirks
+        async with httpx.AsyncClient(timeout=1200.0, verify=False) as client:
             response = await client.post(endpoint, json={"url": tiktok_url})
         
         if response.status_code == 200:
@@ -109,9 +137,9 @@ async def send_to_colab(video_id: int, tiktok_url: str):
             db.commit()
             
     except Exception as e:
-        logger.error(f"Failed to communicate with Colab: {e}")
+        logger.error(f"Failed to communicate with Colab for video {video_id}: {type(e).__name__}: {str(e)}")
         video.status = "Error"
-        video.transcription = f"Connection Failed: {str(e)}"
+        video.transcription = f"Connection Failed: {type(e).__name__} - {str(e)}"
         db.commit()
     finally:
         db.close()
@@ -126,9 +154,22 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
     })
 
 @app.post("/set-colab-url")
-async def set_colab_url(colab_url: str = Form(...)):
+async def set_colab_url(
+    colab_url: str = Form(...),
+    db: Session = Depends(get_db)
+):
     global COLAB_API_URL
     COLAB_API_URL = colab_url
+    
+    # Save to DB
+    config = db.query(SystemConfig).filter(SystemConfig.key == "colab_url").first()
+    if not config:
+        config = SystemConfig(key="colab_url", value=colab_url)
+        db.add(config)
+    else:
+        config.value = colab_url
+    db.commit()
+    
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/add")
