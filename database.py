@@ -34,7 +34,7 @@ def check_and_migrate_db():
         if 'research_notes' not in columns:
             print("Migrating: Adding 'research_notes' column...")
             conn.execute(text("ALTER TABLE videos ADD COLUMN research_notes TEXT"))
-        
+            logger.info("Migrating: Adding 'sources' column...")
         if 'tweet_drafts' not in columns:
             print("Migrating: Adding 'tweet_drafts' column...")
             conn.execute(text("ALTER TABLE videos ADD COLUMN tweet_drafts TEXT"))
