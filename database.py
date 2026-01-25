@@ -1,5 +1,11 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Text, Boolean, DateTime, inspect, text
 from sqlalchemy.orm import sessionmaker, declarative_base
+from datetime import datetime, timezone
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 
 DATABASE_URL = "sqlite:///./database.db"
@@ -14,9 +20,37 @@ class Video(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     url = Column(String, index=True)
-    status = Column(String, default="Pending")  # Pending, Transcribed, Error
+    status = Column(String, default="Pending")  # Pending, Transcribed, Error, Researching
     transcription = Column(Text, nullable=True)
+    research_notes = Column(Text, nullable=True)
+    tweet_drafts = Column(Text, nullable=True)  # Stored as JSON string
+    sources = Column(Text, nullable=True)       # Stored as JSON string (list of URLs)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+def check_and_migrate_db():
+    """Checks for missing columns and adds them (simple migration)."""
+    inspector = inspect(engine)
+    # If table doesn't exist, create_all will handle it, so we skip migration check
+    if not inspector.has_table("videos"):
+            logger.info("Migrating: Adding 'research_notes' column...")
+
+    columns = [c['name'] for c in inspector.get_columns('videos')]
+    
+            logger.info("Migrating: Adding 'tweet_drafts' column...")
+        if 'research_notes' not in columns:
+            print("Migrating: Adding 'research_notes' column...")
+            conn.execute(text("ALTER TABLE videos ADD COLUMN research_notes TEXT"))
+            logger.info("Migrating: Adding 'sources' column...")
+        if 'tweet_drafts' not in columns:
+            print("Migrating: Adding 'tweet_drafts' column...")
+            conn.execute(text("ALTER TABLE videos ADD COLUMN tweet_drafts TEXT"))
+
+        if 'sources' not in columns:
+            print("Migrating: Adding 'sources' column...")
+            conn.execute(text("ALTER TABLE videos ADD COLUMN sources TEXT"))
+            
+        conn.commit()
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    check_and_migrate_db()
