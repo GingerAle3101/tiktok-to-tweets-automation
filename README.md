@@ -52,3 +52,15 @@ Open [http://127.0.0.1:8001](http://127.0.0.1:8001) in your browser.
     - The system will transcribe it (via Colab).
     - Then, it will use Perplexity to research context and draft tweets.
 4.  **Review:** See the drafts, notes, and citations in the UI.
+
+## Troubleshooting
+
+### iCloud / Cloud Drive Sync Issues
+If your project is located in an iCloud-synced folder (e.g., `Documents` or `Desktop`), you may encounter errors like `ModuleNotFoundError` or `FileNotFoundError` due to storage optimization offloading virtual environment files.
+
+**Solution:** Use the included start script, which creates a safe environment outside the synced folder:
+
+```bash
+chmod +x start.sh
+./start.sh
+```
