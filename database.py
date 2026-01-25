@@ -26,7 +26,7 @@ def check_and_migrate_db():
     inspector = inspect(engine)
     # If table doesn't exist, create_all will handle it, so we skip migration check
     if not inspector.has_table("videos"):
-        return
+            logger.info("Migrating: Adding 'research_notes' column...")
 
     columns = [c['name'] for c in inspector.get_columns('videos')]
     
