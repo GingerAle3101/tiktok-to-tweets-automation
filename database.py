@@ -30,7 +30,7 @@ def check_and_migrate_db():
 
     columns = [c['name'] for c in inspector.get_columns('videos')]
     
-    with engine.connect() as conn:
+            logger.info("Migrating: Adding 'tweet_drafts' column...")
         if 'research_notes' not in columns:
             print("Migrating: Adding 'research_notes' column...")
             conn.execute(text("ALTER TABLE videos ADD COLUMN research_notes TEXT"))
