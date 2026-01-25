@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TikTok Transcriber</title>
+    <title>TikTok Transcriber & Researcher</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; }
         .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -14,16 +14,29 @@
         button { background-color: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
         button:hover { background-color: #0056b3; }
         .video-list { margin-top: 2rem; }
-        .video-item { border-bottom: 1px solid #eee; padding: 1rem 0; }
+        .video-item { border-bottom: 1px solid #eee; padding: 1.5rem 0; }
         .video-item:last-child { border-bottom: none; }
-        .status { font-weight: bold; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.85rem; }
+        
+        /* Status Badges */
+        .status { font-weight: bold; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.85rem; text-transform: uppercase; }
         .status-Pending { background-color: #fff3cd; color: #856404; }
         .status-Transcribed { background-color: #d4edda; color: #155724; }
+        .status-Researching { background-color: #cce5ff; color: #004085; }
+        .status-Completed { background-color: #d1e7dd; color: #0f5132; }
         .status-Error { background-color: #f8d7da; color: #721c24; }
-        .transcription-box { background: #f8f9fa; padding: 10px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; font-size: 0.9em; position: relative; }
+        .status-Research_Failed { background-color: #f8d7da; color: #721c24; }
+
+        .transcription-box { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; font-size: 0.9em; position: relative; border-left: 4px solid #007bff; }
+        .research-box { background: #fff3cd; border-left-color: #ffc107; }
+        .tweet-box { background: #e8f5e9; border-left-color: #28a745; margin-bottom: 10px; }
+
         .config-section { background: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-        .copy-btn { position: absolute; top: 5px; right: 5px; background-color: #e2e6ea; color: #333; font-size: 0.8rem; padding: 2px 8px; border: 1px solid #ccc; border-radius: 4px; }
-        .copy-btn:hover { background-color: #dbe0e5; }
+        .copy-btn { position: absolute; top: 10px; right: 10px; background-color: #fff; color: #333; font-size: 0.8rem; padding: 2px 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .copy-btn:hover { background-color: #f0f0f0; }
+        
+        details { margin-top: 10px; }
+        details summary { cursor: pointer; color: #007bff; font-weight: bold; }
+        details summary:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -31,12 +44,14 @@
         <h1>TikTok to Tweets Automation</h1>
 
         <div class="config-section">
-            <form action="/set-colab-url" method="post">
+            <form id="colab-form" action="/set-colab-url" method="post">
                 <div class="form-group">
-                    <label for="colab_url">Colab API URL (Ngrok)</label>
+                    <label for="colab_url">
+                        Colab API URL (Ngrok) 
+                        <span id="colab-status" style="font-weight: normal; font-size: 0.85rem; margin-left: 10px;"></span>
+                    </label>
                     <input type="url" id="colab_url" name="colab_url" value="{{ colab_url }}" placeholder="https://xxxx-xx-xx-xx-xx.ngrok.io">
                 </div>
-                <button type="submit">Update URL</button>
             </form>
         </div>
 
@@ -55,9 +70,9 @@
                 <div><strong>ID:</strong> {{ video.id }}</div>
                 <div><strong>Date:</strong> {{ video.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
                 <div><a href="{{ video.url }}" target="_blank">{{ video.url }}</a></div>
-                <div style="margin-top: 5px;">
+                <div style="margin-top: 5px; margin-bottom: 10px;">
                     <span class="status status-{{ video.status }}">{{ video.status }}</span>
-                    {% if video.status == 'Error' or video.status == 'Pending' %}
+                    {% if video.status == 'Error' or video.status == 'Pending' or video.status == 'Research_Failed' %}
                     <form action="/retry/{{ video.id }}" method="post" class="retry-form" style="display:inline;">
                         <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #6c757d;">Retry</button>
                     </form>
@@ -66,22 +81,98 @@
                         <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #dc3545;">Delete</button>
                     </form>
                 </div>
+                
                 {% if video.transcription %}
-                <div class="transcription-box">
-                    <button class="copy-btn" title="Copy to clipboard">Copy</button>
-                    {{ video.transcription }}
+                <details>
+                    <summary>Original Transcription</summary>
+                    <div class="transcription-box">
+                        <button class="copy-btn" title="Copy">Copy</button>
+                        {{ video.transcription }}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if video.research_notes %}
+                <details open>
+                    <summary>Deep Research Notes</summary>
+                    <div class="transcription-box research-box">
+                        {{ video.research_notes }}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if video.sources %}
+                {% set sources = video.sources | from_json %}
+                {% if sources %}
+                <div style="margin-top: 15px;">
+                    <strong>Sources & Citations:</strong>
+                    <ul style="font-size: 0.9em; margin-top: 5px; padding-left: 20px;">
+                    {% for source in sources %}
+                        <li style="margin-bottom: 4px;">
+                            <a href="{{ source }}" target="_blank" style="color: #007bff; text-decoration: none;">{{ source }}</a>
+                        </li>
+                    {% endfor %}
+                    </ul>
                 </div>
+                {% endif %}
+                {% endif %}
+
+                {% if video.tweet_drafts %}
+                {% set drafts = video.tweet_drafts | from_json %}
+                {% if drafts %}
+                <div style="margin-top: 15px;">
+                    <strong>Viral Tweet Drafts:</strong>
+                    {% for draft in drafts %}
+                    <div class="transcription-box tweet-box">
+                        <button class="copy-btn" title="Copy Tweet">Copy</button>
+                        {{ draft }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
                 {% endif %}
             </div>
             {% endfor %}
         </div>
     </div>
     <script>
+        // Auto-save Colab URL logic
+        const colabInput = document.getElementById('colab_url');
+        const colabStatus = document.getElementById('colab-status');
+        let colabTimeout = null;
+
+        colabInput.addEventListener('input', function() {
+            clearTimeout(colabTimeout);
+            colabStatus.textContent = 'Saving...';
+            colabStatus.style.color = '#6c757d';
+
+            colabTimeout = setTimeout(() => {
+                const formData = new FormData(document.getElementById('colab-form'));
+                fetch('/set-colab-url', {
+                    method: 'POST',
+                    body: formData
+                }).then(response => {
+                    if (response.ok) {
+                        colabStatus.textContent = 'Saved!';
+                        colabStatus.style.color = '#198754';
+                        setTimeout(() => { colabStatus.textContent = ''; }, 2000);
+                    } else {
+                        colabStatus.textContent = 'Error saving';
+                        colabStatus.style.color = '#dc3545';
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    colabStatus.textContent = 'Connection Error';
+                    colabStatus.style.color = '#dc3545';
+                });
+            }, 600); // Wait 600ms after last keystroke/paste
+        });
+
         // Event delegation for Retry, Delete, and Copy buttons
         document.querySelector('.video-list').addEventListener('click', function(e) {
              if (e.target.classList.contains('copy-btn')) {
                 const btn = e.target;
-                const text = btn.parentNode.innerText.replace('Copy', '').trim(); // Remove button text itself
+                const text = btn.parentNode.innerText.replace('Copy', '').trim(); 
                 
                 navigator.clipboard.writeText(text).then(() => {
                     const originalText = btn.textContent;
@@ -105,12 +196,11 @@
                 // Optimistic UI Update
                 statusSpan.textContent = 'Pending';
                 statusSpan.className = 'status status-Pending';
-                form.style.display = 'none'; // Hide retry button temporarily
+                form.style.display = 'none'; 
 
                 fetch(form.action, { method: 'POST' })
                     .catch(err => {
                         console.error('Retry failed:', err);
-                        // Revert on error (optional, usually polling will fix it)
                         statusSpan.textContent = 'Error';
                         statusSpan.className = 'status status-Error';
                         form.style.display = 'inline';
@@ -135,6 +225,11 @@
         });
 
         function updateHistory() {
+            // Check if user is interacting with details elements (don't refresh if open?) 
+            // Actually, simply replacing innerHTML kills state. 
+            // A better approach for a pro app is VDOM or htmx, but for this prototype, we'll keep it simple.
+            // If the user is actively reading (mouse over?), maybe pause? 
+            // Let's just refresh. The text is static mostly.
             fetch('/')
                 .then(response => response.text())
                 .then(html => {
@@ -143,9 +238,6 @@
                     const newHistory = doc.querySelector('.video-list');
                     const currentHistory = document.querySelector('.video-list');
                     
-                    // Only update if there are substantive changes to avoid resetting ephemeral UI states
-                    // This simple check might be too aggressive if user is interacting, 
-                    // but since we update UI optimistically, it should be fine.
                     if (newHistory && currentHistory && newHistory.innerHTML !== currentHistory.innerHTML) {
                         currentHistory.innerHTML = newHistory.innerHTML;
                     }
