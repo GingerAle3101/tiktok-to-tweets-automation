@@ -22,6 +22,7 @@
         .status-Pending { background-color: #fff3cd; color: #856404; }
         .status-Transcribed { background-color: #d4edda; color: #155724; }
         .status-Researching { background-color: #cce5ff; color: #004085; }
+        .status-Drafting { background-color: #e2e3e5; color: #383d41; }
         .status-Completed { background-color: #d1e7dd; color: #0f5132; }
         .status-Error { background-color: #f8d7da; color: #721c24; }
         .status-Research_Failed { background-color: #f8d7da; color: #721c24; }
@@ -35,6 +36,34 @@
         .copy-btn { position: absolute; top: 10px; right: 10px; background-color: #fff; color: #333; font-size: 0.8rem; padding: 2px 8px; border: 1px solid #ccc; border-radius: 4px; }
         .copy-btn:hover { background-color: #f0f0f0; }
         
+        /* Research Editor Styles */
+        textarea.research-editor {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+        .research-actions {
+            text-align: right;
+            margin-top: 5px;
+        }
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 0.85rem;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+
         details { margin-top: 10px; }
         details summary { cursor: pointer; color: #007bff; font-weight: bold; }
         details summary:hover { text-decoration: underline; }
@@ -93,11 +122,154 @@
                 </details>
                 {% endif %}
 
-                {% if video.research_notes %}
+                {% if video.research_notes or video.status == 'Completed' or video.status == 'Drafting' %}
                 <details open>
-                    <summary>Deep Research Notes</summary>
-                    <div class="transcription-box research-box">
-                        {{ video.research_notes }}
+                    <summary>Deep Research Notes (Editable)</summary>
+                    <div class="transcription-box research-box" style="padding-bottom: 5px;">
+                        <form action="/update-research/{{ video.id }}" method="post" class="research-form">
+                            <textarea name="research_notes" class="research-editor">{{ video.research_notes or '' }}</textarea>
+                            <div class="research-actions">
+                                <button type="submit" class="btn-sm btn-warning">Save & Regenerate Drafts</button>
+                            </div>
+                        </form>
+                    </div>
+                </details>
+                {% endif %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok Transcriber & Researcher</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f4f4f9; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #333; }
+        .form-group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: bold; }
+        input[type="text"], input[type="url"] { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background-color: #007bff; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        .video-list { margin-top: 2rem; }
+        .video-item { border-bottom: 1px solid #eee; padding: 1.5rem 0; }
+        .video-item:last-child { border-bottom: none; }
+        
+        /* Status Badges */
+        .status { font-weight: bold; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.85rem; text-transform: uppercase; }
+        .status-Pending { background-color: #fff3cd; color: #856404; }
+        .status-Transcribed { background-color: #d4edda; color: #155724; }
+        .status-Researching { background-color: #cce5ff; color: #004085; }
+        .status-Drafting { background-color: #e2e3e5; color: #383d41; }
+        .status-Completed { background-color: #d1e7dd; color: #0f5132; }
+        .status-Error { background-color: #f8d7da; color: #721c24; }
+        .status-Research_Failed { background-color: #f8d7da; color: #721c24; }
+        .status-Quota_Exceeded { background-color: #f5c6cb; color: #721c24; border: 1px solid #721c24; }
+
+        .transcription-box { background: #f8f9fa; padding: 15px; border-radius: 4px; margin-top: 10px; white-space: pre-wrap; font-size: 0.9em; position: relative; border-left: 4px solid #007bff; }
+        .research-box { background: #fff3cd; border-left-color: #ffc107; }
+        .tweet-box { background: #e8f5e9; border-left-color: #28a745; margin-bottom: 10px; }
+
+        .config-section { background: #e9ecef; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .copy-btn { position: absolute; top: 10px; right: 10px; background-color: #fff; color: #333; font-size: 0.8rem; padding: 2px 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .copy-btn:hover { background-color: #f0f0f0; }
+        
+        /* Research Editor Styles */
+        textarea.research-editor {
+            width: 100%;
+            min-height: 200px;
+            padding: 10px;
+            box-sizing: border-box;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+        .research-actions {
+            text-align: right;
+            margin-top: 5px;
+        }
+        .btn-sm {
+            padding: 4px 10px;
+            font-size: 0.85rem;
+        }
+        .btn-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .btn-warning:hover {
+            background-color: #e0a800;
+        }
+
+        details { margin-top: 10px; }
+        details summary { cursor: pointer; color: #007bff; font-weight: bold; }
+        details summary:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TikTok to Tweets Automation</h1>
+
+        <div class="config-section">
+            <form id="colab-form" action="/set-colab-url" method="post">
+                <div class="form-group">
+                    <label for="colab_url">
+                        Colab API URL (Ngrok) 
+                        <span id="colab-status" style="font-weight: normal; font-size: 0.85rem; margin-left: 10px;"></span>
+                    </label>
+                    <input type="url" id="colab_url" name="colab_url" value="{{ colab_url }}" placeholder="https://xxxx-xx-xx-xx-xx.ngrok.io">
+                </div>
+            </form>
+        </div>
+
+        <form action="/add" method="post">
+            <div class="form-group">
+                <label for="tiktok_url">New TikTok URL</label>
+                <input type="url" id="tiktok_url" name="tiktok_url" placeholder="https://www.tiktok.com/@user/video/..." required>
+            </div>
+            <button type="submit">Add & Transcribe</button>
+        </form>
+
+        <div class="video-list">
+            <h2>History</h2>
+            {% for video in videos %}
+            <div class="video-item" data-id="{{ video.id }}">
+                <div><strong>ID:</strong> {{ video.id }}</div>
+                <div><strong>Date:</strong> {{ video.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+                <div><a href="{{ video.url }}" target="_blank">{{ video.url }}</a></div>
+                <div style="margin-top: 5px; margin-bottom: 10px;">
+                    <span class="status status-{{ video.status }}">{{ video.status }}</span>
+                    {% if video.status == 'Error' or video.status == 'Pending' or video.status == 'Research_Failed' or video.status == 'Quota_Exceeded' %}
+                    <form action="/retry/{{ video.id }}" method="post" class="retry-form" style="display:inline;">
+                        <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #6c757d;">Retry</button>
+                    </form>
+                    {% endif %}
+                    <form action="/delete/{{ video.id }}" method="post" class="delete-form" style="display:inline;">
+                        <button type="submit" style="padding: 2px 8px; font-size: 0.8rem; margin-left: 10px; background-color: #dc3545;">Delete</button>
+                    </form>
+                </div>
+                
+                {% if video.transcription %}
+                <details>
+                    <summary>Original Transcription</summary>
+                    <div class="transcription-box">
+                        <button class="copy-btn" title="Copy">Copy</button>
+                        {{ video.transcription }}
+                    </div>
+                </details>
+                {% endif %}
+
+                {% if video.research_notes or video.status == 'Completed' or video.status == 'Drafting' %}
+                <details open>
+                    <summary>Deep Research Notes (Editable)</summary>
+                    <div class="transcription-box research-box" style="padding-bottom: 5px;">
+                        <form action="/update-research/{{ video.id }}" method="post" class="research-form">
+                            <textarea name="research_notes" class="research-editor">{{ video.research_notes or '' }}</textarea>
+                            <div class="research-actions">
+                                <button type="submit" class="btn-sm btn-warning">Save & Regenerate Drafts</button>
+                            </div>
+                        </form>
                     </div>
                 </details>
                 {% endif %}
@@ -105,17 +277,19 @@
                 {% if video.sources %}
                 {% set sources = video.sources | from_json %}
                 {% if sources %}
-                <div style="margin-top: 15px;">
-                    <strong>Sources & Citations:</strong>
-                    <ul style="font-size: 0.9em; margin-top: 5px; padding-left: 20px;">
-                    {% for source in sources %}
-                        <li style="margin-bottom: 4px;">
-                            <span style="color: #666; font-weight: bold; margin-right: 5px;">[{{ loop.index }}]</span>
-                            <a href="{{ source }}" target="_blank" style="color: #007bff; text-decoration: none;">{{ source }}</a>
-                        </li>
-                    {% endfor %}
-                    </ul>
-                </div>
+                <details style="margin-top: 15px;">
+                    <summary>Sources & Citations ({{ sources|length }})</summary>
+                    <div style="padding-top: 10px;">
+                        <ul style="font-size: 0.9em; margin-top: 5px; padding-left: 20px;">
+                        {% for source in sources %}
+                            <li style="margin-bottom: 4px;">
+                                <span style="color: #666; font-weight: bold; margin-right: 5px;">[{{ loop.index }}]</span>
+                                <a href="{{ source }}" target="_blank" style="color: #007bff; text-decoration: none;">{{ source }}</a>
+                            </li>
+                        {% endfor %}
+                        </ul>
+                    </div>
+                </details>
                 {% endif %}
                 {% endif %}
 
@@ -173,6 +347,8 @@
         // Event delegation for Retry, Delete, and Copy buttons
         document.querySelector('.video-list').addEventListener('click', function(e) {
              if (e.target.classList.contains('copy-btn')) {
+                // Prevent form submission if inside a form (though type is button, just in case)
+                e.preventDefault();
                 const btn = e.target;
                 const text = btn.parentNode.innerText.replace('Copy', '').trim(); 
                 
@@ -224,14 +400,233 @@
                     })
                     .catch(err => console.error('Delete failed:', err));
             }
+            
+            if (e.target.classList.contains('research-form')) {
+                e.preventDefault();
+                const form = e.target;
+                const videoItem = form.closest('.video-item');
+                const statusSpan = videoItem.querySelector('.status');
+                const submitBtn = form.querySelector('button[type="submit"]');
+                const originalBtnText = submitBtn.textContent;
+                
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Drafting...';
+                
+                // Optimistic update
+                statusSpan.textContent = 'Drafting';
+                statusSpan.className = 'status status-Drafting';
+
+                const formData = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                }).then(response => {
+                    if (response.ok) {
+                        submitBtn.textContent = 'Drafting Started';
+                        setTimeout(() => {
+                           submitBtn.disabled = false;
+                           submitBtn.textContent = originalBtnText; 
+                        }, 2000);
+                    } else {
+                        throw new Error('Server returned ' + response.status);
+                    }
+                }).catch(err => {
+                    console.error('Drafting request failed:', err);
+                    alert('Failed to start drafting: ' + err);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalBtnText;
+                    statusSpan.textContent = 'Error';
+                    statusSpan.className = 'status status-Error';
+                });
+            }
         });
 
         function updateHistory() {
-            // Check if user is interacting with details elements (don't refresh if open?) 
-            // Actually, simply replacing innerHTML kills state. 
-            // A better approach for a pro app is VDOM or htmx, but for this prototype, we'll keep it simple.
-            // If the user is actively reading (mouse over?), maybe pause? 
-            // Let's just refresh. The text is static mostly.
+            // Check if user is interacting with ANY input/textarea
+            const activeElement = document.activeElement;
+            const isEditing = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+            
+            if (isEditing) {
+                // console.log("Skipping update due to user editing.");
+                return;
+            }
+
+            fetch('/')
+                .then(response => response.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const newHistory = doc.querySelector('.video-list');
+                    const currentHistory = document.querySelector('.video-list');
+                    
+                    if (newHistory && currentHistory && newHistory.innerHTML !== currentHistory.innerHTML) {
+                        currentHistory.innerHTML = newHistory.innerHTML;
+                    }
+                })
+                .catch(err => console.error('Failed to update history:', err));
+        }
+        setInterval(updateHistory, 5000);
+    </script>
+</body>
+</html>
+                {% if video.tweet_drafts %}
+                {% set drafts = video.tweet_drafts | from_json %}
+                {% if drafts %}
+                <div style="margin-top: 15px;">
+                    <strong>Viral Tweet Drafts:</strong>
+                    {% for draft in drafts %}
+                    <div class="transcription-box tweet-box">
+                        <button class="copy-btn" title="Copy Tweet">Copy</button>
+                        {{ draft }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <script>
+        // Auto-save Colab URL logic
+        const colabInput = document.getElementById('colab_url');
+        const colabStatus = document.getElementById('colab-status');
+        let colabTimeout = null;
+
+        colabInput.addEventListener('input', function() {
+            clearTimeout(colabTimeout);
+            colabStatus.textContent = 'Saving...';
+            colabStatus.style.color = '#6c757d';
+
+            colabTimeout = setTimeout(() => {
+                const formData = new FormData(document.getElementById('colab-form'));
+                fetch('/set-colab-url', {
+                    method: 'POST',
+                    body: formData
+                }).then(response => {
+                    if (response.ok) {
+                        colabStatus.textContent = 'Saved!';
+                        colabStatus.style.color = '#198754';
+                        setTimeout(() => { colabStatus.textContent = ''; }, 2000);
+                    } else {
+                        colabStatus.textContent = 'Error saving';
+                        colabStatus.style.color = '#dc3545';
+                    }
+                }).catch(err => {
+                    console.error(err);
+                    colabStatus.textContent = 'Connection Error';
+                    colabStatus.style.color = '#dc3545';
+                });
+            }, 600); // Wait 600ms after last keystroke/paste
+        });
+
+        // Event delegation for Retry, Delete, and Copy buttons
+        document.querySelector('.video-list').addEventListener('click', function(e) {
+             if (e.target.classList.contains('copy-btn')) {
+                // Prevent form submission if inside a form (though type is button, just in case)
+                e.preventDefault();
+                const btn = e.target;
+                const text = btn.parentNode.innerText.replace('Copy', '').trim(); 
+                
+                navigator.clipboard.writeText(text).then(() => {
+                    const originalText = btn.textContent;
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy text: ', err);
+                });
+             }
+        });
+
+        document.querySelector('.video-list').addEventListener('submit', function(e) {
+            if (e.target.classList.contains('retry-form')) {
+                e.preventDefault();
+                const form = e.target;
+                const videoItem = form.closest('.video-item');
+                const statusSpan = videoItem.querySelector('.status');
+                
+                // Optimistic UI Update
+                statusSpan.textContent = 'Pending';
+                statusSpan.className = 'status status-Pending';
+                form.style.display = 'none'; 
+
+                fetch(form.action, { method: 'POST' })
+                    .catch(err => {
+                        console.error('Retry failed:', err);
+                        statusSpan.textContent = 'Error';
+                        statusSpan.className = 'status status-Error';
+                        form.style.display = 'inline';
+                    });
+            }
+            
+            if (e.target.classList.contains('delete-form')) {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to delete this video?')) return;
+
+                const form = e.target;
+                const videoItem = form.closest('.video-item');
+
+                fetch(form.action, { method: 'POST' })
+                    .then(response => {
+                        if (response.ok) {
+                            videoItem.remove();
+                        }
+                    })
+                    .catch(err => console.error('Delete failed:', err));
+            }
+            
+            if (e.target.classList.contains('research-form')) {
+                e.preventDefault();
+                const form = e.target;
+                const videoItem = form.closest('.video-item');
+                const statusSpan = videoItem.querySelector('.status');
+                const submitBtn = form.querySelector('button[type="submit"]');
+                const originalBtnText = submitBtn.textContent;
+                
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Drafting...';
+                
+                // Optimistic update
+                statusSpan.textContent = 'Drafting';
+                statusSpan.className = 'status status-Drafting';
+
+                const formData = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData
+                }).then(response => {
+                    if (response.ok) {
+                        submitBtn.textContent = 'Drafting Started';
+                        setTimeout(() => {
+                           submitBtn.disabled = false;
+                           submitBtn.textContent = originalBtnText; 
+                        }, 2000);
+                    } else {
+                        throw new Error('Server returned ' + response.status);
+                    }
+                }).catch(err => {
+                    console.error('Drafting request failed:', err);
+                    alert('Failed to start drafting: ' + err);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalBtnText;
+                    statusSpan.textContent = 'Error';
+                    statusSpan.className = 'status status-Error';
+                });
+            }
+        });
+
+        function updateHistory() {
+            // Check if user is interacting with ANY input/textarea
+            const activeElement = document.activeElement;
+            const isEditing = activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA');
+            
+            if (isEditing) {
+                // console.log("Skipping update due to user editing.");
+                return;
+            }
+
             fetch('/')
                 .then(response => response.text())
                 .then(html => {

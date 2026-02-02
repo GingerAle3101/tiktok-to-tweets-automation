@@ -6,7 +6,7 @@ from database import SessionLocal, engine, Base, Video, SystemConfig, init_db
 import httpx
 import logging
 import json
-from researcher import perform_research
+from researcher import perform_research, perform_drafting
 
 # Initialize DB (and migrate if needed)
 init_db()
@@ -93,6 +93,45 @@ async def run_research_task(video_id: int):
              video.status = "Research_Failed"
              video.research_notes = f"Research Failed: {error_msg}"
              
+        db.commit()
+    finally:
+        db.close()
+
+async def run_drafting_task(video_id: int):
+    """
+    Background task to ONLY generate tweets from existing research notes.
+    """
+    logger.info(f"Starting drafting for video {video_id}")
+    db = SessionLocal()
+    video = db.query(Video).filter(Video.id == video_id).first()
+    
+    if not video or not video.transcription or not video.research_notes:
+        logger.error(f"Video {video_id} missing transcription or research notes.")
+        db.close()
+        return
+
+    try:
+        # Parse sources if available
+        citations = []
+        if video.sources:
+            try:
+                citations = json.loads(video.sources)
+            except Exception as e:
+                logger.warning(f"Failed to parse sources for video {video_id}: {e}")
+
+        # Perform Drafting
+        results = await perform_drafting(video.transcription, video.research_notes, citations)
+        
+        # Update DB
+        video.tweet_drafts = json.dumps(results.get("tweet_drafts", []))
+        video.status = "Completed"
+        
+        db.commit()
+        logger.info(f"Drafting completed for video {video_id}")
+        
+    except Exception as e:
+        logger.error(f"Drafting failed for video {video_id}: {e}")
+        video.status = "Error"
         db.commit()
     finally:
         db.close()
@@ -212,6 +251,24 @@ async def retry_video(
             db.commit()
             background_tasks.add_task(send_to_colab, video.id, video.url)
     
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/update-research/{video_id}")
+async def update_research(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    research_notes: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if video:
+        video.research_notes = research_notes
+        video.status = "Drafting" # Or Researching, but Drafting is more specific if we had it
+        db.commit()
+        
+        # Trigger drafting
+        background_tasks.add_task(run_drafting_task, video.id)
+        
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/delete/{video_id}")

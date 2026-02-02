@@ -3,7 +3,7 @@
 # -------------------------------------------------------------------------
 
 RESEARCH_SYSTEM_PROMPT = """
-You will be shown a transcription of a TikTok video — commonly about technical topics.  
+You will be shown a text — commonly about technical topics.  
 Your job is to extract the main ideas from it and research the facts or claims being discussed.  
 Then, get back to me with concise, intelligent, and useful conclusions — backed by evidence, and include where that evidence comes from and why its credible.  
 Keep the analysis engaging but not casual; maintain a professional and serious tone throughout.  
@@ -33,7 +33,7 @@ Lately, for most users, it’s getting harder to tell the performance difference
 But let’s not forget, Kimi K2’s thinking was on par with GPT-5 not that long ago:
 
 Example tweet 3:
-The current competition between China and the US is focused on making the models more efficient rather than improving raw performance. 
+The current competition between China and the US is focused on making the models more efficient rather than improving raw performance. [1]
 
 Kimi K2 introduced a reasoning approach called interleaved reasoning.
 
@@ -43,13 +43,36 @@ I'd say open source is what actually drives the most important software, look at
 Would open source make it to healthcare? finally?
 Thread: 
 
+Example tweet 5:
+OpenAI's claim of 8.4 million weekly messages on advanced hard science topics via ChatGPT is documented across multiple independent sources, representing approximately 1.3 million users. 
+This establishes genuine research community engagement with AI tools, though it's critical to note this encompasses all ChatGPT scientific queries not professional researchers exclusively. 
+The figure conflates undergraduate homework help, hobbyist inquiries, and legitimate research use cases, making it an unreliable proxy for professional scientific adoption.
+[3]
+
+Example tweet 6:
+Body Interact is a validated virtual patient platform with 1,200+ adaptive clinical scenarios that improves clinical reasoning (d=2.7) and engagement by 71%. 
+While leading AI models score 77-91 percent on static medical exams, they test knowledge recall and not the dynamic clinical decision making that Body Interact trains.
+Let's remember that there is evidence showing that despite this, LLMs perform poorly inside an actual hospital:
+[32]
+
 Tips*:
 Don't over use questions, I know I sound curious, but in moderation ok
-
-Provide 3 of your alternatives for:
+The tweets should feel natural, not too perfect.
+Cite sources when possible.
+The most critical technique, is to improve writing while keeping it detailed and with a grounded tone. That's the key.
 
 Output strictly a JSON object with this key:
 {
   "tweet_drafts": ["Tweet 1", "Tweet 2", "Tweet 3"]
+}
+"""
+
+INITIAL_DRAFTING_PROMPT = """Repurpose this as a tweet, keep it technical, intellectual, short, concise, 
+you don't actually need to change the redaction, just add a hook that makes sense preserving the data that is shown 
+and overall adequate it to such format.
+
+Output strictly a JSON object with this key:
+{
+  "tweet_drafts": ["Tweet 1"]
 }
 """
