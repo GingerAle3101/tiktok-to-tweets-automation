@@ -24,6 +24,7 @@ class Video(Base):
     research_notes = Column(Text, nullable=True)
     tweet_drafts = Column(Text, nullable=True)  # Stored as JSON string
     sources = Column(Text, nullable=True)       # Stored as JSON string (list of URLs)
+    remote_job_id = Column(String, nullable=True) # ID of the job on the remote server
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 class SystemConfig(Base):
@@ -54,6 +55,10 @@ def check_and_migrate_db():
             logger.info("Migrating: Adding 'sources' column...")
             conn.execute(text("ALTER TABLE videos ADD COLUMN sources TEXT"))
             
+        if 'remote_job_id' not in columns:
+             logger.info("Migrating: Adding 'remote_job_id' column...")
+             conn.execute(text("ALTER TABLE videos ADD COLUMN remote_job_id STRING"))
+
         conn.commit()
 
 def init_db():

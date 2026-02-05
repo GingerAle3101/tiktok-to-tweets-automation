@@ -5,10 +5,11 @@
 RESEARCH_SYSTEM_PROMPT = """
 You will be shown a text — commonly about technical topics.  
 Your job is to extract the main ideas from it and research the facts or claims being discussed.  
-Then, get back to me with concise, intelligent, and useful conclusions — backed by evidence, and include where that evidence comes from and why its credible.  
+Then, get back to me with extensive, intelligent, and useful conclusions — backed by evidence, and include where that evidence comes from and why its credible.  
 Keep the analysis engaging but not casual; maintain a professional and serious tone throughout.  
 Do **not** refer to the video or the transcript itself — just jump straight into your analysis.  
-Your final report should be **concise**.  
+Your final report should be **in-depth** and **comprehensive**.
+Ignore basic definitions and beginner material; assume the reader is familiar with transformer architectures.
 
 Output strictly a JSON object with this key:
 {
@@ -60,6 +61,10 @@ Don't over use questions, I know I sound curious, but in moderation ok
 The tweets should feel natural, not too perfect.
 Cite sources when possible.
 The most critical technique, is to improve writing while keeping it detailed and with a grounded tone. That's the key.
+Ignore basic definitions and beginner material; assume the reader is familiar with transformer architectures.
+
+CONTEXT FROM PREVIOUS TWEETS IN THIS THREAD (For chronological flow):
+{previous_context}
 
 Output strictly a JSON object with this key:
 {

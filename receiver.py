@@ -6,6 +6,8 @@ from database import SessionLocal, engine, Base, Video, SystemConfig, init_db
 import httpx
 import logging
 import json
+import time
+import asyncio
 from researcher import perform_research, perform_drafting
 
 # Initialize DB (and migrate if needed)
@@ -139,42 +141,87 @@ async def run_drafting_task(video_id: int):
 async def send_to_colab(video_id: int, tiktok_url: str):
     """
     Background task to send the link to the Colab instance for transcription.
+    Uses a Job ID + Polling mechanism to avoid timeouts.
     """
     global COLAB_API_URL
     if not COLAB_API_URL:
         logger.warning(f"No Colab URL set. Skipping transcription for video {video_id}")
         return
 
-    # Clean the URL
     clean_url = COLAB_API_URL.strip().rstrip('/')
-    logger.info(f"Sending video {video_id} to Colab: {clean_url}")
+    logger.info(f"Starting job for video {video_id} at: {clean_url}")
     
     db = SessionLocal()
     video = db.query(Video).filter(Video.id == video_id).first()
     
     try:
-        endpoint = f"{clean_url}/transcribe"
-        logger.info(f"Requesting Endpoint: {endpoint}")
-        
-        # Increased timeout to 20 minutes for long videos
-        # SSL verification disabled to handle Ngrok certificate quirks
-        async with httpx.AsyncClient(timeout=1200.0, verify=False) as client:
-            response = await client.post(endpoint, json={"url": tiktok_url})
-        
-        if response.status_code == 200:
-            data = response.json()
-            video.transcription = data.get("text", "")
-            video.status = "Researching"  # New status
-            db.commit()
+        # 1. Start the Job
+        start_endpoint = f"{clean_url}/transcribe"
+        async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+            response = await client.post(start_endpoint, json={"url": tiktok_url})
             
-            # Chain the next task
-            await run_research_task(video_id)
-            
-        else:
+        if response.status_code != 200:
             video.status = "Error"
-            video.transcription = f"Colab Error: {response.status_code} - {response.text}"
+            video.transcription = f"Failed to start job: {response.status_code} - {response.text}"
             db.commit()
+            return
             
+        data = response.json()
+        job_id = data.get("job_id")
+        video.remote_job_id = job_id
+        video.status = "Processing"
+        db.commit()
+        logger.info(f"Job started for video {video_id}. Remote Job ID: {job_id}")
+
+        # 2. Poll for Status
+        job_endpoint = f"{clean_url}/job/{job_id}"
+        
+        # Poll for up to 30 minutes
+        max_retries = 180  # 180 * 10s = 30 mins
+        
+        for i in range(max_retries):
+            try:
+                await asyncio.sleep(10) # Wait 10s between checks
+                
+                async with httpx.AsyncClient(timeout=30.0, verify=False) as client:
+                    status_resp = await client.get(job_endpoint)
+                
+                if status_resp.status_code == 200:
+                    job_data = status_resp.json()
+                    status = job_data.get("status")
+                    
+                    if status == "completed":
+                        video.transcription = job_data.get("text", "")
+                        video.status = "Researching"
+                        video.remote_job_id = None # Clear job ID on success
+                        db.commit()
+                        logger.info(f"Job {job_id} completed successfully.")
+                        
+                        # Chain the next task
+                        await run_research_task(video_id)
+                        return
+
+                    elif status == "error":
+                        video.status = "Error"
+                        video.transcription = f"Remote Job Error: {job_data.get('error')}"
+                        video.remote_job_id = None
+                        db.commit()
+                        return
+                    
+                    # If "processing" or "pending", continue loop
+                    
+                else:
+                    logger.warning(f"Polling failed with {status_resp.status_code}. Retrying...")
+
+            except Exception as poll_err:
+                 logger.warning(f"Polling connection error: {poll_err}. Retrying...")
+                 # Don't fail immediately on network blip
+        
+        # If loop finishes without success
+        video.status = "Timeout"
+        video.transcription = "Transcription timed out after 30 minutes."
+        db.commit()
+
     except Exception as e:
         logger.error(f"Failed to communicate with Colab for video {video_id}: {type(e).__name__}: {str(e)}")
         video.status = "Error"
