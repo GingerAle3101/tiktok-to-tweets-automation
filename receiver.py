@@ -59,18 +59,22 @@ async def run_research_task(video_id: int):
     """
     Background task to perform Deep Research and generate tweets.
     """
+    print(f"DEBUG: Entering run_research_task for video {video_id}", flush=True)
     logger.info(f"Starting research for video {video_id}")
     db = SessionLocal()
     video = db.query(Video).filter(Video.id == video_id).first()
     
     if not video or not video.transcription:
+        print(f"DEBUG: Video {video_id} missing or no transcription.", flush=True)
         logger.error(f"Video {video_id} not found or missing transcription.")
         db.close()
         return
 
     try:
+        print("DEBUG: Calling perform_research...", flush=True)
         # Perform Research
         results = await perform_research(video.transcription)
+        print("DEBUG: perform_research returned.", flush=True)
         
         # Update DB
         video.research_notes = results.get("research_notes", "")
@@ -85,6 +89,7 @@ async def run_research_task(video_id: int):
         
     except Exception as e:
         error_msg = str(e)
+        print(f"DEBUG: Exception in run_research_task: {error_msg}", flush=True)
         logger.error(f"Research failed for video {video_id}: {error_msg}")
         
         # Handle specific Quota/Auth errors (Cloudflare 401)
@@ -316,6 +321,21 @@ async def update_research(
         # Trigger drafting
         background_tasks.add_task(run_drafting_task, video.id)
         
+    return RedirectResponse(url="/", status_code=303)
+
+@app.post("/research-draft/{video_id}")
+async def research_draft_video(
+    video_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if video and video.transcription:
+        logger.info(f"Triggering manual Research & Draft for video {video_id}")
+        video.status = "Researching"
+        db.commit()
+        background_tasks.add_task(run_research_task, video.id)
+    
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/delete/{video_id}")
