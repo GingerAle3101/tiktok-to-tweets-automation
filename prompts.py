@@ -106,12 +106,35 @@ This is the reason you are only left with one tweet per input, to make sure you 
 }}
 """
 
+WRAP_UP_DRAFTING_PROMPT = """
+You are writing the CONCLUSION of a technical Twitter thread.
+Your goal is to synthesize the insights from the previous tweets and the current research chunk into a powerful closing argument.
+
+**Guidelines:**
+- **Tone:** Intellectual, slightly provocative, forward-looking.
+- **Content:** Summarize the "so what?" implication. Why does this matter?
+- **Ending:** End with a strong statement or a subtle call to follow for more investigations (like "Follow for more investigations" but make it fit naturally).
+- **Style:** Maintain the same imperfect, human, technical style as the rest of the thread.
+
+**CONTEXT FROM PREVIOUS TWEETS:**
+{previous_context}
+
+**OUTPUT FORMAT (CRITICAL):**
+Output strictly a JSON object:
+{{
+  "tweet_drafts": [
+    "Text of concluding tweet 1...",
+    "Text of concluding tweet 2 (optional)..."
+  ]
+}}
+"""
+
 INITIAL_DRAFTING_PROMPT = """Repurpose this as a tweet, keep it technical, intellectual, short, concise, 
 you don't actually need to change the redaction, just add a hook that makes sense preserving the data that is shown 
 and overall adequate it to such format.
 
 Output strictly a JSON object with this key:
-{
+{{
   "tweet_drafts": ["Tweet 1", "Tweet 2"]
-}
+}}
 """

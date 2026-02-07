@@ -10,7 +10,7 @@ from openai import AsyncOpenAI
 from google import genai
 from google.genai import types
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from prompts import RESEARCH_SYSTEM_PROMPT, DRAFTING_SYSTEM_PROMPT, INITIAL_DRAFTING_PROMPT
+from prompts import RESEARCH_SYSTEM_PROMPT, DRAFTING_SYSTEM_PROMPT, INITIAL_DRAFTING_PROMPT, WRAP_UP_DRAFTING_PROMPT
 
 load_dotenv()
 
@@ -273,26 +273,31 @@ async def perform_drafting(transcription: str, research_notes: str, citations: l
     all_tweets = []
     
     # Process sequentially to maintain context
+    total_chunks = len(valid_chunks)
     for index, chunk_text in enumerate(valid_chunks):
         try:
             chunk_len = len(chunk_text)
             logger.info(f"--- Processing Chunk {index} ({chunk_len} chars) ---")
             logger.debug(f"Chunk Start: {chunk_text[:100]}...") 
             
-            # Context for system prompt: Last 2 tweets
+            # Context for system prompt: Last 3 tweets (increased from 2)
             previous_context = ""
             if all_tweets:
-                last_two = all_tweets[-2:]
-                previous_context = "\n".join([f"- {t}" for t in last_two])
+                last_n = all_tweets[-3:] # Get last 3
+                previous_context = "\n".join([f"- {t}" for t in last_n])
             else:
                 previous_context = "None (Start of thread)"
                 
             logger.info(f"Context injected: {previous_context[:100]}...")
 
-            # Select and format prompt
+            # Select prompt strategy
             if index == 0:
                 logger.info("Using INITIAL_DRAFTING_PROMPT")
                 system_prompt = INITIAL_DRAFTING_PROMPT
+            elif index == total_chunks - 1:
+                # Wrap up strategy for the last chunk
+                logger.info("Using WRAP_UP_DRAFTING_PROMPT (Final Chunk)")
+                system_prompt = WRAP_UP_DRAFTING_PROMPT.format(previous_context=previous_context)
             else:
                 logger.info("Using DRAFTING_SYSTEM_PROMPT")
                 # Format the DRAFTING_SYSTEM_PROMPT with the context
