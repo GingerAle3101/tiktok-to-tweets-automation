@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from google import genai
 from google.genai import types
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from prompts import RESEARCH_SYSTEM_PROMPT, DRAFTING_SYSTEM_PROMPT, INITIAL_DRAFTING_PROMPT
 
 load_dotenv()
@@ -22,7 +23,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 DRAFT_CHUNK_SIZE = int(os.getenv("DRAFT_CHUNK_SIZE", "3000"))
 
 PERPLEXITY_MODEL = os.getenv("PERPLEXITY_MODEL", "sonar-deep-research")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-pro-preview")
 DEEP_RESEARCH_AGENT = "deep-research-pro-preview-12-2025"
 
 if not GEMINI_API_KEY:
@@ -189,41 +190,83 @@ async def perform_drafting(transcription: str, research_notes: str, citations: l
 
     logger.info(f"=== STARTING DRAFTING PHASE ===")
     logger.info(f"Total Research Notes Length: {len(research_notes)}")
+    logger.info(f"Research Notes Preview (Raw): {repr(research_notes[:500])}...")
     
-    # Robust Chunking Strategy
-    # 1. Try splitting by Headers (Level 1, 2, or 3)
-    chunks = re.split(r'(?m)^(?=#{1,3}\s)', research_notes)
-    
-    # Filter out empty strings and strip whitespace
-    valid_chunks = [c.strip() for c in chunks if c.strip()]
-    logger.info(f"Initial split by headers found {len(valid_chunks)} chunks.")
-    
-    # 2. Fallback: If only 1 chunk found (no headers matched), try splitting by double newline (paragraphs)
-    if len(valid_chunks) <= 1:
-        logger.info("No headers found for splitting (or single chunk). Attempting paragraph split strategy...")
-        chunks = research_notes.split('\n\n')
-        logger.info(f"Split by double newline found {len(chunks)} paragraphs.")
+    # --- Advanced Chunking Strategy (Regex Pre-segmentation + Merge) ---
+    try:
+        # 1. Normalize newlines
+        text = research_notes.replace("\\n", "\n")
+
+        # 2. Regex Split (Perplexity suggestion)
+        # Split on two or more newlines OR bullet starts OR markdown headings.
+        # This breaks the text into atomic semantic units (paragraphs, list items, headers)
+        parts = re.split(
+            r"(?:\n{2,}|(?=^#{1,6} )|(?=^\* {2,})|(?=^\d+\. ))",
+            text,
+            flags=re.MULTILINE,
+        )
         
-        # Re-group paragraphs into larger chunks if they are too small
-        # Simple logic: merge paragraphs until ~2000 chars
-        merged_chunks = []
+        pre_chunks = [p.strip() for p in parts if p.strip()]
+        logger.info(f"Regex pre-segmentation created {len(pre_chunks)} atomic blocks.")
+
+        # 3. Intelligent Merge to DRAFT_CHUNK_SIZE
+        # We re-assemble these small blocks into larger chunks that fit the context window
+        valid_chunks = []
         current_chunk = ""
         
-        for p in chunks:
-            p = p.strip()
-            if not p: continue
-            
-            if len(current_chunk) + len(p) < 2000:
-                current_chunk += "\n\n" + p
+        # Helper to safely split very large atomic blocks (nuclear option)
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=DRAFT_CHUNK_SIZE,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", " ", ""],
+            keep_separator=True
+        )
+
+        for block in pre_chunks:
+            # If a single block is massive (unlikely but possible), split it first
+            if len(block) > DRAFT_CHUNK_SIZE:
+                sub_chunks = splitter.split_text(block)
+                # Flush current buffer
+                if current_chunk:
+                    valid_chunks.append(current_chunk.strip())
+                    current_chunk = ""
+                # Add sub-chunks, keeping the last one in buffer if it fits, else flush all
+                for sub in sub_chunks:
+                    if len(sub) < DRAFT_CHUNK_SIZE: # Should be true given splitter config
+                         valid_chunks.append(sub)
+                    else:
+                         valid_chunks.append(sub)
+                continue
+
+            # Check if adding this block exceeds the limit
+            # +2 for the newline separator
+            if len(current_chunk) + len(block) + 2 <= DRAFT_CHUNK_SIZE:
+                if current_chunk:
+                    current_chunk += "\n\n" + block
+                else:
+                    current_chunk = block
             else:
-                if current_chunk: merged_chunks.append(current_chunk)
-                current_chunk = p
+                # Flush current chunk
+                if current_chunk:
+                    valid_chunks.append(current_chunk.strip())
+                # Start new chunk with current block
+                current_chunk = block
         
-        if current_chunk: merged_chunks.append(current_chunk)
-        
-        # If merged chunks resulted in valid chunks, use them. Otherwise fallback to the single research_notes
-        valid_chunks = merged_chunks if merged_chunks else [research_notes]
-        logger.info(f"After merging paragraphs, created {len(valid_chunks)} valid chunks.")
+        # Flush remaining buffer
+        if current_chunk:
+            valid_chunks.append(current_chunk.strip())
+
+        logger.info(f"Advanced Chunking created {len(valid_chunks)} final chunks using size={DRAFT_CHUNK_SIZE}.")
+
+    except Exception as e:
+        logger.error(f"Advanced chunking failed: {e}. Falling back to LangChain default.")
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=DRAFT_CHUNK_SIZE,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", " ", ""],
+            keep_separator=True
+        )
+        valid_chunks = splitter.split_text(research_notes)
     
     logger.info(f"Final Processing: {len(valid_chunks)} sections. Max target chunk size: {DRAFT_CHUNK_SIZE}")
     
@@ -282,9 +325,52 @@ async def perform_drafting(transcription: str, research_notes: str, citations: l
             logger.info(f"Chunk {index} Response received.")
             logger.debug(f"Raw Response: {response.text}")
             
-            data = json.loads(response.text)
-            drafts = data.get("tweet_drafts", [])
-            
+            drafts = []
+            try:
+                cleaned_text = _clean_json_markdown(response.text)
+                data = json.loads(cleaned_text)
+                
+                # Case 1: Standard Dict
+                if isinstance(data, dict):
+                    # Exact match
+                    if "tweet_drafts" in data:
+                        drafts = data["tweet_drafts"]
+                    else:
+                        # Fuzzy match keys
+                        found_key = None
+                        for key in data.keys():
+                            if "tweet_drafts" in key.lower() or "tweets" in key.lower():
+                                found_key = key
+                                break
+                        if found_key:
+                            drafts = data[found_key]
+                        else:
+                            logger.warning(f"Chunk {index}: JSON dict returned but no 'tweet_drafts' key found. Keys: {list(data.keys())}")
+                
+                # Case 2: List returned directly
+                elif isinstance(data, list):
+                    drafts = data
+                    
+            except json.JSONDecodeError:
+                logger.warning(f"Chunk {index}: Invalid JSON. Attempting regex extraction.")
+                # Fallback: find ["..."] pattern
+                array_match = re.search(r'\[.*\]', response.text, re.DOTALL)
+                if array_match:
+                    try:
+                        potential_drafts = json.loads(array_match.group(0))
+                        if isinstance(potential_drafts, list):
+                            drafts = potential_drafts
+                    except:
+                        pass
+                
+                # If still empty, try line-based heuristic
+                if not drafts:
+                     drafts = [line.strip() for line in response.text.split('\n') if len(line) > 20 and not line.strip().startswith('```') and not line.strip().startswith('{') and not line.strip().startswith('}')]
+
+            # Normalize drafts (ensure they are strings)
+            if drafts:
+                drafts = [str(d) for d in drafts if isinstance(d, (str, int, float))]
+
             if not drafts:
                 logger.warning(f"Chunk {index}: No 'tweet_drafts' found in response.")
             else:
@@ -294,6 +380,7 @@ async def perform_drafting(transcription: str, research_notes: str, citations: l
             
         except Exception as e:
             logger.error(f"Error processing chunk {index}: {e}")
+            logger.error(f"Raw Response causing error: {response.text}") # Log the culprit
             # Continue to next chunk even if one fails
             continue
 
